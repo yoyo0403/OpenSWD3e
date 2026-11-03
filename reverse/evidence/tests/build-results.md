@@ -18,3 +18,11 @@
 | --- | --- |
 | Windows 单元测试（swd3e_tests.exe） | 待用户运行 |
 | Windows 试玩（swd3er.exe） | 待用户运行 |
+
+## 原生 Windows 构建（无 WSL；scripts/native-windows/，2026-10-31 高清滤镜改动）
+
+- 入口：`scripts/native-windows/build_main.sh`（MSYS2/Git Bash；工具链同上，LLVM 23.1.4 于 C:\Program Files\LLVM，MSYS2 bash 与 junction 见 windows编译.md）。
+- 结果（本机 2026-10-31，工作树含 [display] scaler 高清滤镜改动）：构建成功，0 个编译警告；单元测试 179 项中 178 项通过（`179 test cases, 9 failures`——失败全部为 "glyph library: MingLiU cells of the sizes the game draws" 的 9 个断言）。该失败与本改动无关：stash 掉改动后重建同样失败（`177 test cases, 9 failures`），属本机 font.bin 资源与测试期望不符，待单独核实。
+- 结果（本机 2026-11-02，叠加状态栏好感显示改动 src/menu/menu.cpp）：构建成功（仅重编 menu.cpp），0 个编译警告；风格检查（check_style.sh 的六项规则以等价命令逐项执行，本机无 ripgrep）与 clang-format --dry-run 无差异。单元测试与试玩待用户运行。
+- 结果（本机 2026-11-02，好感数值右对齐修正——剧本 talk2 事件 4／talk3 事件 11 各强制 SET 100，后半段数值为三位数会超出面板右缘）：重建成功，0 个编译警告，clang-format 无差异。待用户试玩确认。
+- 高清滤镜基准（tmp/edge_scaler_bench.cpp，-O2，640×480，最坏情况全画面 4×4 棋盘格）：factor 2 4.56ms、factor 3 4.79ms、factor 4 6.41ms 一帧；实际画面以平坦区为主（快路径），显著更快。

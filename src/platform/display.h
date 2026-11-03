@@ -4,6 +4,9 @@
 #include <span>
 #include <string>
 #include <vector>
+#include <optional>
+#include <string_view>
+#include <utility>
 
 #include "core/point.h"
 #include "core/types.h"
@@ -55,6 +58,28 @@ Viewport FitViewport(int outputWidth, int outputHeight, const ScreenLayout& layo
 // its edge.
 LogicalPoint ToLogical(const Viewport& viewport, float outputX, float outputY, const ScreenLayout& layout = {});
 
+// How the logical frame is scaled to the window (the rebuild's [display] scaler, deviations.md): the original's
+// nearest pixels, linear filtering, or the rebuild's edge scaler (diagonals blended at the pixel corners).
+enum class FrameFilter : u8
+{
+    Nearest,
+    Linear,
+    Edge,
+};
+
+// The names of the filters as [display] scaler takes them, in the order of the setting page's choices.
+constexpr std::array<std::pair<std::string_view, FrameFilter>, 3> kFrameFilters = {{
+    {"nearest", FrameFilter::Nearest},
+    {"linear", FrameFilter::Linear},
+    {"edge", FrameFilter::Edge},
+}};
+
+// The filter of `name`, or none for a name no setting takes.
+std::optional<FrameFilter> FrameFilterOf(std::string_view name);
+
+// The name of `filter` as [display] scaler writes it.
+std::string_view FrameFilterName(FrameFilter filter);
+
 // The game window. The original ran full screen at 640x480; here the logical screen keeps that size while the
 // window can be resized freely: the screen is scaled with nearest sampling at any ratio that keeps its aspect, with
 // black bars on the remaining sides. Alt+Enter toggles borderless full screen. The map can fill it instead
@@ -102,6 +127,9 @@ public:
     int FitScale() const;
     // Presenting waits for the display's refresh (`enabled`); false when the renderer cannot.
     bool SetVSync(bool enabled);
+    // How the frames shown are scaled to the window ([display] scaler); the edge filter scales the frame on the CPU
+    // and the renderer takes it the rest of the way with linear sampling.
+    void SetFilter(FrameFilter filter);
     // Handles Alt+Enter; true when the event was consumed.
     bool HandleEvent(const SDL_Event& event);
     void ToggleFullscreen();
@@ -285,6 +313,14 @@ private:
     void TrackWindow(const SDL_Event& event);
     // A logical screen point in window coordinates (what SDL_WarpMouseInWindow and SDL_SetTextInputArea take).
     void LogicalToWindow(int x, int y, float& windowX, float& windowY) const;
+    // The frame of `screen` under the edge filter, as a texture of its own (the frame scaled by hand, the renderer
+    // scaling it the rest of the way with linear sampling); nullptr when the texture cannot be made. A frame that did
+    // not change is not scaled again.
+    SDL_Texture* MakeFilteredFrame(const Surface& screen, const Viewport& viewport);
+    // The same for a backdrop canvas, scaled anew each call (backdrops are taken rarely).
+    SDL_Texture* MakeFilteredBackdrop(const Surface& canvas);
+    // The factor the edge filter scales `width` x `height` by: enough for the window, at most EdgeScaler::MostFactor.
+    int FilterFactor(int width, int height, const Viewport& viewport) const;
 
     int restoredWidth = DefaultWindowWidth;
     int restoredHeight = DefaultWindowHeight;
@@ -319,6 +355,18 @@ private:
     int backdropWidth = 0;
     int backdropHeight = 0;
     bool backdropShown = false;
+    // The edge filter's frame and backdrop (ARGB8888): the scaled sizes, the scaler's pixels and the frame the
+    // texture holds.
+    FrameFilter filter = FrameFilter::Nearest;
+    SDL_Texture* filteredFrame = nullptr;
+    int filteredWidth = 0;
+    int filteredHeight = 0;
+    std::vector<u16> filterSeen;
+    std::vector<u32> filterPixels;
+    SDL_Texture* filteredBackdrop = nullptr;
+    int filteredBackdropWidth = 0;
+    int filteredBackdropHeight = 0;
+    std::vector<u32> filterBackdropPixels;
     SDL_Cursor* cursor = nullptr;
     std::array<SDL_Cursor*, 2> systemCursors{};  // ShowSystemPointer: the arrow and the move pointer
 };

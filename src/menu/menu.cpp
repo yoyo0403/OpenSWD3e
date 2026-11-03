@@ -170,6 +170,14 @@ constexpr std::u8string_view kSpecialLabel = u8"絕技";
 constexpr std::array<std::u8string_view, 5> kResistanceLabels = {u8"[金]", u8"[木]", u8"[水]", u8"[火]", u8"[土]"};
 // RoleRecord::evasion, ailmentChance, rapport and reaction.
 constexpr std::array<std::u8string_view, 4> kHiddenLabels = {u8"閃躲", u8"異常", u8"默契", u8"反應"};
+// The rebuild (deviations.md): the affection shown as one more row of the hidden column, on the pages of the two
+// heroines only. The value is role variable 1 of the maps.dat role table (Talk::RoleVariable reads and the talk
+// scripts change it); the final chapter compares Xiaoxue's value with Yu'er's to pick its branch (talk1.dat event
+// 465), so none of the other roles has one. The party slots follow Party::DefaultNames, the maps role ids theirs
+// (slot + 1: Xiaoxue is id 2, Yu'er id 3).
+constexpr std::u8string_view kAffectionLabel = u8"好感";
+constexpr int kAffectionVariable = 1;
+constexpr std::array<int, Party::Roles> kAffectionRoleIds = {0, 2, 3, 0};
 constexpr std::string_view kValueFormat = "%d";
 constexpr std::string_view kPercentFormat = "%d%%";
 constexpr std::string_view kProgressFormat = "%d/%d";
@@ -1234,6 +1242,24 @@ void Menu::DrawRoleTabs(int offset, int mode)
             const int hiddenX = kHiddenX - offset;
             row(hiddenX, hiddenX + kHiddenValueX, y, kHiddenLabels[at], WinFormat(kValueFormat, {hidden[at]}));
             y += kPanelStep;
+        }
+
+        // The rebuild (deviations.md): the affection of Xiaoxue and Yu'er below the hidden attributes. A role
+        // without a record leaves the value as it was set (0 here; Talk::RoleVariable returns without it). The value
+        // is right-aligned to the two-digit end of the rows above: past the story's middle the scripts reset both to
+        // 100 (talk2 event 4 for Yu'er, talk3 event 11 for Xiaoxue) and they grow from there, and three digits at the
+        // plain value offset would end past the panel (the defeated shade ends at kDefeatedShadeX + its width).
+        const int affectionId = kAffectionRoleIds[static_cast<std::size_t>(role)];
+
+        if (affectionId != 0)
+        {
+            i32 affection = 0;
+            owner.talk.RoleVariable(static_cast<u32>(affectionId), kAffectionVariable, affection, Talk::ReadVariable);
+            const std::string affectionText = WinFormat(kValueFormat, {affection});
+            const int digit = font.Advance() >> 1;
+            const int hiddenX = kHiddenX - offset;
+            const int valueAt = hiddenX + kHiddenValueX + 2 * digit - static_cast<int>(affectionText.size()) * digit;
+            row(hiddenX, valueAt, resistancesY + 4 * kPanelStep, kAffectionLabel, affectionText);
         }
 
         painter.SetClipClamped(0, 0, Display::Width, Display::Height);

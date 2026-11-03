@@ -3,6 +3,9 @@
 
 using swd3e::Display;
 using swd3e::FitViewport;
+using swd3e::FrameFilter;
+using swd3e::FrameFilterName;
+using swd3e::FrameFilterOf;
 using swd3e::ToLogical;
 
 namespace
@@ -58,4 +61,16 @@ TEST_CASE("display: positions on the black bars clamp to the screen edge")
     const auto right = ToLogical(viewport, kWideWidth - kOnBar, kWideHeight - 1);
     CHECK_EQ(right.x, Display::Width - 1);
     CHECK_EQ(right.y, Display::Height - 1);
+}
+
+TEST_CASE("display: the frame filters read back by their names")
+{
+    CHECK(FrameFilterOf("nearest") == FrameFilter::Nearest);
+    CHECK(FrameFilterOf("linear") == FrameFilter::Linear);
+    CHECK(FrameFilterOf("edge") == FrameFilter::Edge);
+    CHECK(!FrameFilterOf("xbrz").has_value());
+    CHECK(!FrameFilterOf("").has_value());
+    CHECK(FrameFilterName(FrameFilter::Nearest) == "nearest");
+    CHECK(FrameFilterName(FrameFilter::Linear) == "linear");
+    CHECK(FrameFilterName(FrameFilter::Edge) == "edge");
 }

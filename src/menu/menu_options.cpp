@@ -479,6 +479,17 @@ std::vector<std::string> Menu::SetupChoices(Setup setup, i32 row, i32& chosen) c
             chosen = owner.renderScaleSetting == Game::AutoRenderScale ? 0 : owner.renderScaleSetting;
             break;
 
+        case kFilterRow:
+            for (std::u8string_view choice : kFilterChoices)
+            {
+                choices.push_back(text(choice));
+            }
+
+            chosen = owner.frameFilter == FrameFilter::Nearest  ? kNearestChoice
+                     : owner.frameFilter == FrameFilter::Linear ? kLinearChoice
+                                                                : kEdgeChoice;
+            break;
+
         default:
             break;
     }
@@ -529,6 +540,12 @@ void Menu::SetupChoose(Setup setup, i32 row, i32 choice)
 
         case kRenderScaleRow:
             owner.renderScaleSetting = choice == 0 ? Game::AutoRenderScale : choice;
+            break;
+
+        case kFilterRow:
+            owner.frameFilter = choice == kNearestChoice  ? FrameFilter::Nearest
+                                : choice == kLinearChoice ? FrameFilter::Linear
+                                                          : FrameFilter::Edge;
             break;
 
         case kWideMapRow:
@@ -1944,7 +1961,7 @@ void Menu::OptionsDrawSetup(Pixel color)
 
     for (i32 row = 0; row < SetupBackRow(setup); ++row)
     {
-        const bool counts = SetupRowCounts(setup, row, owner.smoothMotion);
+        const bool counts = SetupRowCounts(setup, row, owner.smoothMotion, owner.frameFilter == FrameFilter::Nearest);
         i32 chosen = -1;
         const std::vector<std::string> choices = this->SetupChoices(setup, row, chosen);
         const std::vector<int> lefts = ChoiceLefts(choices, large, kBarStepsLeft);

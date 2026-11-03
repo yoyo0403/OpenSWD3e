@@ -1330,7 +1330,12 @@ void Menu::DrawSetupSettings()
         {
             i32 chosen = -1;
             const std::vector<std::string> choices = this->SetupChoices(setup, row, chosen);
-            this->DrawSystemChoices(row, choices, chosen, SetupRowCounts(setup, row, owner.smoothMotion));
+            this->DrawSystemChoices(
+                row,
+                choices,
+                chosen,
+                SetupRowCounts(setup, row, owner.smoothMotion, owner.frameFilter == FrameFilter::Nearest)
+            );
         }
     }
 

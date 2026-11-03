@@ -358,6 +358,14 @@ void Validate(Settings& settings, std::vector<std::string>& warnings)
         warnings.emplace_back("[display] render_scale must be \"auto\" or 1..8: \"auto\" kept");
         display.renderScale.reset();
     }
+
+    if (!FrameFilterOf(display.scaler).has_value())
+    {
+        warnings.push_back(
+            "[display] scaler must be nearest, linear or edge: " + std::string(DisplaySettings::DefaultFilter) + " kept"
+        );
+        display.scaler = defaults.display.scaler;
+    }
 }
 
 std::string_view WithoutMark(std::string_view text)

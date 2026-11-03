@@ -33,12 +33,16 @@
 
 第二遍汇编验证已全部完成（方法见 reverse/analysis/pass2-method.md，证据在 reverse/evidence/pass2/）。交付门槛：Linux 构建与单元测试通过、Windows 构建 0 警告（记录见 reverse/evidence/tests/build-results.md）；Windows 可正常游玩待用户试玩确认。
 
-停点：无（第二遍完成），等待 Windows 试玩结果。
+其上按用户 2026-10-31 要求增加呈现层高清滤镜（[display] scaler：nearest／linear／自研 edge，自研算法不用第三方代码；设置页「畫面濾鏡」行，edge／linear 时繪製倍率强制 1），已实现并通过构建、0 警告与单元测试（见 deviations.md 对应行与 build-results.md 的原生 Windows 一节），观感待用户试玩。
+
+其上按用户 2026-11-02 要求增加状态栏好感显示（小雪／玉儿角色页隐藏属性列下「好感」行，值为角色表 RoleVariables 低字节，与最終章分歧同源），已实现并通过原生 Windows 构建（0 警告、风格检查无差异，见 deviations.md 对应行与 build-results.md 原生 Windows 一节），显示效果待用户试玩。
+
+停点：无，等待 Windows 试玩结果（含滤镜观感与好感行显示）。
 
 ## 下一步
 
-1. 用户在 Windows 上试玩；回传的问题按汇编判断是否为重建差异，差异照第二遍流程修正并复核受影响函数。
-2. 修正后 Linux 构建与测试通过、Windows 构建 0 警告，提交推送并发 TG。
+1. 用户在 Windows 上试玩；回传的问题按汇编判断是否为重建差异，差异照第二遍流程修正并复核受影响函数。滤镜观感（阈值、角混合强度）按试玩反馈调参（改 src/platform/edge_scaler.cpp 的具名常量并同步更新测试黄金值）。好感行（位置、标签）按试玩反馈调整（改 src/menu/menu.cpp 的 kAffectionLabel 一带常量）。
+2. 修正后构建与测试通过、Windows 构建 0 警告，提交推送并发 TG。
 3. 试玩确认可正常游玩后，GOAL 完成。
 
 ## GOAL完成条件

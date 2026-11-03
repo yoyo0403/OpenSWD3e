@@ -9,6 +9,7 @@
 
 #include "core/log.h"
 #include "core/types.h"
+#include "platform/edge_scaler.h"
 #include "platform/exe_resources.h"
 #include "platform/surface.h"
 
@@ -51,6 +52,32 @@ SDL_Surface* MakeIconSurface(const IconImage& icon)
 }
 
 }  // namespace
+
+std::optional<FrameFilter> FrameFilterOf(std::string_view name)
+{
+    for (const std::pair<std::string_view, FrameFilter>& filter : kFrameFilters)
+    {
+        if (filter.first == name)
+        {
+            return filter.second;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::string_view FrameFilterName(FrameFilter filter)
+{
+    for (const std::pair<std::string_view, FrameFilter>& named : kFrameFilters)
+    {
+        if (named.second == filter)
+        {
+            return named.first;
+        }
+    }
+
+    return kFrameFilters.front().first;
+}
 
 Viewport FitViewport(int outputWidth, int outputHeight, const ScreenLayout& layout)
 {
@@ -109,6 +136,16 @@ Display::~Display()
     if (this->scaledTexture != nullptr)
     {
         SDL_DestroyTexture(this->scaledTexture);
+    }
+
+    if (this->filteredFrame != nullptr)
+    {
+        SDL_DestroyTexture(this->filteredFrame);
+    }
+
+    if (this->filteredBackdrop != nullptr)
+    {
+        SDL_DestroyTexture(this->filteredBackdrop);
     }
 
     if (this->backdrop != nullptr)
@@ -279,10 +316,28 @@ void Display::Present(const Surface& screen)
         shown = this->scaledTexture;
     }
 
-    SDL_UpdateTexture(shown, nullptr, screen.Pixels(), screen.Width() * static_cast<int>(sizeof(Pixel)));
+    const Viewport viewport = this->CurrentViewport();
+
+    // The frame as shown: the edge filter scales it on the CPU into a texture of its own (the renderer taking it the
+    // rest of the way with linear sampling); the plain filters leave the frame to the renderer.
+    SDL_Texture* frame = shown;
+
+    if (this->filter == FrameFilter::Edge)
+    {
+        frame = this->MakeFilteredFrame(screen, viewport);
+    }
+
+    if (frame == shown)
+    {
+        SDL_UpdateTexture(shown, nullptr, screen.Pixels(), screen.Width() * static_cast<int>(sizeof(Pixel)));
+        SDL_SetTextureScaleMode(
+            shown,
+            this->filter == FrameFilter::Linear ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST
+        );
+    }
+
     SDL_SetRenderDrawColor(this->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(this->renderer);
-    const Viewport viewport = this->CurrentViewport();
     SDL_FRect target{viewport.x, viewport.y, viewport.width, viewport.height};
 
     // A frame of the 640x480 screen on a larger layout lies on the screen's place, the backdrop around it.
@@ -297,13 +352,28 @@ void Display::Present(const Surface& screen)
                             screen.Height() == Display::Height &&
                             this->menuSize == std::array<int, 2>{outputWidth, outputHeight};
 
+        SDL_Texture* behind2 = this->backdrop;
+
+        if (this->filter == FrameFilter::Edge && this->filteredBackdrop != nullptr)
+        {
+            behind2 = this->filteredBackdrop;
+        }
+
         if (behind)
         {
             SDL_RenderTexture(this->renderer, this->menuAround, nullptr, nullptr);
         }
-        else if (this->backdropShown && this->backdrop != nullptr)
+        else if (this->backdropShown && behind2 != nullptr)
         {
-            SDL_RenderTexture(this->renderer, this->backdrop, nullptr, &target);
+            if (behind2 == this->backdrop)
+            {
+                SDL_SetTextureScaleMode(
+                    behind2,
+                    this->filter == FrameFilter::Linear ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST
+                );
+            }
+
+            SDL_RenderTexture(this->renderer, behind2, nullptr, &target);
         }
 
         const float scaleX = viewport.width / static_cast<float>(this->layout.width);
@@ -316,7 +386,7 @@ void Display::Present(const Surface& screen)
         };
     }
 
-    SDL_RenderTexture(this->renderer, shown, nullptr, &target);
+    SDL_RenderTexture(this->renderer, frame, nullptr, &target);
     SDL_RenderPresent(this->renderer);
 }
 
@@ -326,6 +396,7 @@ void Display::SetBackdrop(const Surface* canvas)
 
     if (canvas == nullptr || !this->IsOpen())
     {
+        Display::DestroyOverlay(this->filteredBackdrop);
         return;
     }
 
@@ -357,6 +428,12 @@ void Display::SetBackdrop(const Surface* canvas)
 
     SDL_UpdateTexture(this->backdrop, nullptr, canvas->Pixels(), canvas->Width() * static_cast<int>(sizeof(Pixel)));
     this->backdropShown = true;
+
+    // The edge filter shows the canvas through its own scaled texture (taken here, as the backdrop is).
+    if (this->filter == FrameFilter::Edge)
+    {
+        this->MakeFilteredBackdrop(*canvas);
+    }
 }
 
 SDL_Texture* Display::CreateOverlay(const Surface& pixels, bool smooth, bool keyed, u16 key) const
@@ -1297,6 +1374,123 @@ bool Display::SetVSync(bool enabled)
 
     this->vsync = enabled;
     return true;
+}
+
+void Display::SetFilter(FrameFilter filter)
+{
+    this->filter = filter;
+    this->filterSeen.clear();  // what the texture holds is not the next frame's scaled copy
+
+    if (filter != FrameFilter::Edge)
+    {
+        Display::DestroyOverlay(this->filteredBackdrop);
+    }
+}
+
+int Display::FilterFactor(int width, int height, const Viewport& viewport) const
+{
+    if (width <= 0 || height <= 0 || viewport.width <= 0 || viewport.height <= 0)
+    {
+        return EdgeScaler::LeastFactor;
+    }
+
+    const float across =
+        std::max(viewport.width / static_cast<float>(width), viewport.height / static_cast<float>(height));
+    return std::clamp(static_cast<int>(std::ceil(across)), EdgeScaler::LeastFactor, EdgeScaler::MostFactor);
+}
+
+SDL_Texture* Display::MakeFilteredFrame(const Surface& screen, const Viewport& viewport)
+{
+    if (screen.Width() <= 0 || screen.Height() <= 0)
+    {
+        return nullptr;
+    }
+
+    const int factor = this->FilterFactor(screen.Width(), screen.Height(), viewport);
+    const int width = screen.Width() * factor;
+    const int height = screen.Height() * factor;
+
+    if (this->filteredFrame == nullptr || this->filteredWidth != width || this->filteredHeight != height)
+    {
+        if (this->filteredFrame != nullptr)
+        {
+            SDL_DestroyTexture(this->filteredFrame);
+        }
+
+        this->filteredFrame =
+            SDL_CreateTexture(this->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+        this->filteredWidth = width;
+        this->filteredHeight = height;
+        this->filterSeen.clear();  // the new texture holds nothing yet
+
+        if (this->filteredFrame == nullptr)
+        {
+            LogError(u8"filtered frame texture creation failed: %s", AsUtf8(SDL_GetError()));
+            return nullptr;
+        }
+
+        SDL_SetTextureScaleMode(this->filteredFrame, SDL_SCALEMODE_LINEAR);
+        this->filterPixels.assign(static_cast<std::size_t>(width) * height, 0);
+        LogInfo(u8"edge filter frame texture %dx%d (factor %d)", width, height, factor);
+    }
+
+    const u16* pixels = screen.Pixels();
+    const std::size_t count = static_cast<std::size_t>(screen.Width()) * screen.Height();
+
+    if (this->filterSeen.size() == count && std::equal(pixels, pixels + count, this->filterSeen.data()))
+    {
+        return this->filteredFrame;
+    }
+
+    EdgeScaler::Scale(pixels, screen.Width(), screen.Height(), factor, this->filterPixels.data());
+    SDL_UpdateTexture(this->filteredFrame, nullptr, this->filterPixels.data(), width * static_cast<int>(sizeof(u32)));
+    this->filterSeen.assign(pixels, pixels + count);
+    return this->filteredFrame;
+}
+
+SDL_Texture* Display::MakeFilteredBackdrop(const Surface& canvas)
+{
+    if (canvas.Width() <= 0 || canvas.Height() <= 0)
+    {
+        return nullptr;
+    }
+
+    const int factor = this->FilterFactor(canvas.Width(), canvas.Height(), this->CurrentViewport());
+    const int width = canvas.Width() * factor;
+    const int height = canvas.Height() * factor;
+
+    if (this->filteredBackdrop == nullptr || this->filteredBackdropWidth != width ||
+        this->filteredBackdropHeight != height)
+    {
+        if (this->filteredBackdrop != nullptr)
+        {
+            SDL_DestroyTexture(this->filteredBackdrop);
+        }
+
+        this->filteredBackdrop =
+            SDL_CreateTexture(this->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+        this->filteredBackdropWidth = width;
+        this->filteredBackdropHeight = height;
+
+        if (this->filteredBackdrop == nullptr)
+        {
+            LogError(u8"filtered backdrop texture creation failed: %s", AsUtf8(SDL_GetError()));
+            return nullptr;
+        }
+
+        SDL_SetTextureScaleMode(this->filteredBackdrop, SDL_SCALEMODE_LINEAR);
+        this->filterBackdropPixels.assign(static_cast<std::size_t>(width) * height, 0);
+        LogInfo(u8"edge filter backdrop texture %dx%d (factor %d)", width, height, factor);
+    }
+
+    EdgeScaler::Scale(canvas.Pixels(), canvas.Width(), canvas.Height(), factor, this->filterBackdropPixels.data());
+    SDL_UpdateTexture(
+        this->filteredBackdrop,
+        nullptr,
+        this->filterBackdropPixels.data(),
+        width * static_cast<int>(sizeof(u32))
+    );
+    return this->filteredBackdrop;
 }
 
 bool Display::HandleEvent(const SDL_Event& event)

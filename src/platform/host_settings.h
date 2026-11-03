@@ -109,7 +109,11 @@ struct DisplaySettings
     // wide_map: the map fills the window, seeing more of it, instead of 640x480 between black bars (default true).
     std::optional<bool> wideMap;
     std::optional<bool> itemHints;
+    // scaler: how the frame is scaled to the window: nearest (the original's square pixels), linear (smoothed) or
+    // edge (the rebuild's edge scaler). The render scale goes with nearest only.
+    std::string scaler{DefaultFilter};
 
+    static constexpr std::string_view DefaultFilter = "nearest";
     static constexpr i64 MinimumFrameRate = 30;
     static constexpr i64 MaximumFrameRate = 1000;
     static constexpr i64 MaximumRenderScale = 8;
@@ -127,6 +131,7 @@ struct DisplaySettings
             SettingField<DisplaySettings, std::optional<ScaleChoice>>{"render_scale", &DisplaySettings::renderScale},
             SettingField<DisplaySettings, std::optional<bool>>{"wide_map", &DisplaySettings::wideMap},
             SettingField<DisplaySettings, std::optional<bool>>{"item_hints", &DisplaySettings::itemHints},
+            SettingField<DisplaySettings, std::string>{"scaler", &DisplaySettings::scaler},
         };
     }
 

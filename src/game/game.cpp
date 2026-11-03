@@ -385,6 +385,7 @@ int Game::Run([[maybe_unused]] std::u8string_view commandLine)
     this->frameRate = shown.frameRate.value_or(0);
     const ScaleChoice renderScale = shown.renderScale.value_or(ScaleChoice{});
     this->renderScaleSetting = renderScale.automatic ? Game::AutoRenderScale : static_cast<int>(renderScale.factor);
+    this->frameFilter = FrameFilterOf(shown.scaler).value_or(FrameFilter::Nearest);
     this->wideMap = shown.wideMap.value_or(true);
     this->itemHints = shown.itemHints.value_or(false);
     this->smoothScreen = std::make_unique<Surface>(Display::Width, Display::Height);
@@ -1636,14 +1637,16 @@ void Game::AdvanceMotion()
 void Game::ApplyDisplay()
 {
     this->display.SetVSync(this->vsync);
+    this->display.SetFilter(this->frameFilter);
     this->frameRatePeriodNs = this->frameRate > 0 ? kNanosecondsPerSecond / static_cast<u64>(this->frameRate) : 0;
     this->nextDrawNs = 0;
     LogInfo(
-        u8"smooth_motion=%d vsync=%d frame_rate=%d render_scale=%d (0: auto) wide_map=%d",
+        u8"smooth_motion=%d vsync=%d frame_rate=%d render_scale=%d (0: auto) scaler=%s wide_map=%d",
         this->smoothMotion ? 1 : 0,
         this->vsync ? 1 : 0,
         static_cast<i32>(this->frameRate),
         this->renderScaleSetting,
+        AsUtf8(FrameFilterName(this->frameFilter)),
         this->wideMap ? 1 : 0
     );
 }
@@ -1665,6 +1668,7 @@ void Game::StoreDisplay() const
                 stored.renderScale = this->renderScaleSetting == Game::AutoRenderScale
                                          ? ScaleChoice{}
                                          : ScaleChoice{false, this->renderScaleSetting};
+                stored.scaler = std::string(FrameFilterName(this->frameFilter));
             },
             error
         ))
@@ -1738,7 +1742,9 @@ bool Game::PresentBetween()
     this->ShowLayout(map);
     const int width = map ? this->mapLayout.width : Display::Width;
     const int height = map ? this->mapLayout.height : Display::Height;
-    int scale = this->renderScaleSetting;
+    // The edge filter takes the frame as drawn (its pixels stay whole), so the render scale goes with the nearest
+    // filter only; a pixel drawn at a render scale would come out as a block again.
+    int scale = this->frameFilter == FrameFilter::Nearest ? this->renderScaleSetting : 1;
 
     if (scale == Game::AutoRenderScale)
     {

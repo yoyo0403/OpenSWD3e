@@ -29,17 +29,25 @@ constexpr i32 kWideMapRow = 1;
 constexpr i32 kVSyncRow = 2;
 constexpr i32 kFrameRateRow = 3;
 constexpr i32 kRenderScaleRow = 4;
-constexpr i32 kItemHintsRow = 5;
-constexpr i32 kDisplayBackRow = 6;
-constexpr std::array<std::u8string_view, 7> kDisplayLabels = {
+constexpr i32 kFilterRow = 5;
+constexpr i32 kItemHintsRow = 6;
+constexpr i32 kDisplayBackRow = 7;
+constexpr std::array<std::u8string_view, 8> kDisplayLabels = {
     u8"平滑畫面",
     u8"地圖填滿",
     u8"垂直同步",
     u8"幀率上限",
     u8"繪製倍率",
+    u8"畫面濾鏡",
     u8"道具提示",
     u8"返回",
 };
+
+// The choices of the filter row: the original's square pixels, linear smoothing and the rebuild's edge scaler.
+constexpr std::array<std::u8string_view, 3> kFilterChoices = {u8"最近", u8"線性", u8"邊緣"};
+constexpr i32 kNearestChoice = 0;
+constexpr i32 kLinearChoice = 1;
+constexpr i32 kEdgeChoice = 2;
 
 // The rows of the battle setup, and their labels.
 constexpr i32 kAutoComboRow = 0;
@@ -70,11 +78,26 @@ constexpr i32 SetupBackRow(Setup setup)
     return static_cast<i32>(SetupLabels(setup).size()) - 1;
 }
 
-// Whether row `row` of `setup` takes effect: on the display setup the frame rate and the render scale only with smooth
-// motion.
-constexpr bool SetupRowCounts(Setup setup, i32 row, bool smoothMotion)
+// Whether row `row` of `setup` takes effect: on the display setup the frame rate and the render scale only with
+// smooth motion, and the render scale only with the nearest filter (the edge filter takes the frame as drawn).
+constexpr bool SetupRowCounts(Setup setup, i32 row, bool smoothMotion, bool nearestFilter)
 {
-    return setup != Setup::Display || smoothMotion || (row != kFrameRateRow && row != kRenderScaleRow);
+    if (setup != Setup::Display)
+    {
+        return true;
+    }
+
+    if (row == kFrameRateRow && !smoothMotion)
+    {
+        return false;
+    }
+
+    if (row == kRenderScaleRow && (!smoothMotion || !nearestFilter))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 }  // namespace swd3e
