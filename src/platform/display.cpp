@@ -274,7 +274,7 @@ ScreenLayout Display::FillLayout() const
     return fill;
 }
 
-void Display::Present(const Surface& screen)
+void Display::Present(const Surface& screen, int parts)
 {
     if (!this->IsOpen())
     {
@@ -319,21 +319,17 @@ void Display::Present(const Surface& screen)
     const Viewport viewport = this->CurrentViewport();
 
     // The frame as shown: the edge filter scales it on the CPU into a texture of its own (the renderer taking it the
-    // rest of the way with linear sampling); the plain filters leave the frame to the renderer.
+    // rest of the way with linear sampling); the nearest filter leaves the frame to the renderer.
     SDL_Texture* frame = shown;
 
     if (this->filter == FrameFilter::Edge)
     {
-        frame = this->MakeFilteredFrame(screen, viewport);
+        frame = this->MakeFilteredFrame(screen, viewport, parts);
     }
 
     if (frame == shown)
     {
         SDL_UpdateTexture(shown, nullptr, screen.Pixels(), screen.Width() * static_cast<int>(sizeof(Pixel)));
-        SDL_SetTextureScaleMode(
-            shown,
-            this->filter == FrameFilter::Linear ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST
-        );
     }
 
     SDL_SetRenderDrawColor(this->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
@@ -347,9 +343,10 @@ void Display::Present(const Surface& screen)
         int outputWidth = 0;
         int outputHeight = 0;
         SDL_GetRenderOutputSize(this->renderer, &outputWidth, &outputHeight);
-        // The map around a menu as the GPU showed it (SetMenuBehind), while the output keeps its size.
-        const bool behind = this->menuAround != nullptr && screen.Width() == Display::Width &&
-                            screen.Height() == Display::Height &&
+        // The map around a menu as the GPU showed it (SetMenuBehind), while the output keeps its size. The edge filter
+        // scales the whole frame on the CPU, so with it the backdrop takes the menu's place instead.
+        const bool behind = this->menuAround != nullptr && this->filter != FrameFilter::Edge &&
+                            screen.Width() == Display::Width && screen.Height() == Display::Height &&
                             this->menuSize == std::array<int, 2>{outputWidth, outputHeight};
 
         SDL_Texture* behind2 = this->backdrop;
@@ -365,14 +362,6 @@ void Display::Present(const Surface& screen)
         }
         else if (this->backdropShown && behind2 != nullptr)
         {
-            if (behind2 == this->backdrop)
-            {
-                SDL_SetTextureScaleMode(
-                    behind2,
-                    this->filter == FrameFilter::Linear ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST
-                );
-            }
-
             SDL_RenderTexture(this->renderer, behind2, nullptr, &target);
         }
 
@@ -390,7 +379,7 @@ void Display::Present(const Surface& screen)
     SDL_RenderPresent(this->renderer);
 }
 
-void Display::SetBackdrop(const Surface* canvas)
+void Display::SetBackdrop(const Surface* canvas, int parts)
 {
     this->backdropShown = false;
 
@@ -432,7 +421,7 @@ void Display::SetBackdrop(const Surface* canvas)
     // The edge filter shows the canvas through its own scaled texture (taken here, as the backdrop is).
     if (this->filter == FrameFilter::Edge)
     {
-        this->MakeFilteredBackdrop(*canvas);
+        this->MakeFilteredBackdrop(*canvas, parts);
     }
 }
 
@@ -1235,6 +1224,8 @@ void Display::EndLayers()
     SDL_RenderClear(this->renderer);
     const Viewport viewport = this->CurrentViewport();
     const SDL_FRect shown{viewport.x, viewport.y, viewport.width, viewport.height};
+    // The composed canvas scaled to the window once (to the output's copy while capturing); the edge filter never
+    // shows this canvas (the map is painted on the CPU with it), so it keeps the nearest sampling it was made with.
     SDL_RenderTexture(this->renderer, this->composeTarget, nullptr, &shown);
 
     // Captured: the copy read back as RGB565, nothing shown.
@@ -1387,6 +1378,11 @@ void Display::SetFilter(FrameFilter filter)
     }
 }
 
+int Display::FilterFactor(int width, int height) const
+{
+    return this->FilterFactor(width, height, this->CurrentViewport());
+}
+
 int Display::FilterFactor(int width, int height, const Viewport& viewport) const
 {
     if (width <= 0 || height <= 0 || viewport.width <= 0 || viewport.height <= 0)
@@ -1399,18 +1395,24 @@ int Display::FilterFactor(int width, int height, const Viewport& viewport) const
     return std::clamp(static_cast<int>(std::ceil(across)), EdgeScaler::LeastFactor, EdgeScaler::MostFactor);
 }
 
-SDL_Texture* Display::MakeFilteredFrame(const Surface& screen, const Viewport& viewport)
+SDL_Texture* Display::MakeFilteredFrame(const Surface& screen, const Viewport& viewport, int parts)
 {
     if (screen.Width() <= 0 || screen.Height() <= 0)
     {
         return nullptr;
     }
 
-    const int factor = this->FilterFactor(screen.Width(), screen.Height(), viewport);
-    const int width = screen.Width() * factor;
-    const int height = screen.Height() * factor;
+    // A canvas woven at `parts` holds `parts` sub-samples a logical pixel; the filter scales the logical frame from
+    // them (each block's north-west sample its pixel, the sample the corners are judged on).
+    const int woven = std::max(1, parts);
+    const int logicalWidth = screen.Width() / woven;
+    const int logicalHeight = screen.Height() / woven;
+    const int factor = this->FilterFactor(logicalWidth, logicalHeight, viewport);
+    const int width = logicalWidth * factor;
+    const int height = logicalHeight * factor;
 
-    if (this->filteredFrame == nullptr || this->filteredWidth != width || this->filteredHeight != height)
+    if (this->filteredFrame == nullptr || this->filteredWidth != width || this->filteredHeight != height ||
+        this->filterParts != woven)
     {
         if (this->filteredFrame != nullptr)
         {
@@ -1421,6 +1423,7 @@ SDL_Texture* Display::MakeFilteredFrame(const Surface& screen, const Viewport& v
             SDL_CreateTexture(this->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
         this->filteredWidth = width;
         this->filteredHeight = height;
+        this->filterParts = woven;
         this->filterSeen.clear();  // the new texture holds nothing yet
 
         if (this->filteredFrame == nullptr)
@@ -1431,7 +1434,7 @@ SDL_Texture* Display::MakeFilteredFrame(const Surface& screen, const Viewport& v
 
         SDL_SetTextureScaleMode(this->filteredFrame, SDL_SCALEMODE_LINEAR);
         this->filterPixels.assign(static_cast<std::size_t>(width) * height, 0);
-        LogInfo(u8"edge filter frame texture %dx%d (factor %d)", width, height, factor);
+        LogInfo(u8"filtered frame texture %dx%d (factor %d, parts %d)", width, height, factor, woven);
     }
 
     const u16* pixels = screen.Pixels();
@@ -1442,22 +1445,33 @@ SDL_Texture* Display::MakeFilteredFrame(const Surface& screen, const Viewport& v
         return this->filteredFrame;
     }
 
-    EdgeScaler::Scale(pixels, screen.Width(), screen.Height(), factor, this->filterPixels.data());
+    if (woven > 1)
+    {
+        EdgeScaler::ScaleWoven(pixels, logicalWidth, logicalHeight, woven, factor, this->filterPixels.data());
+    }
+    else
+    {
+        EdgeScaler::Scale(pixels, logicalWidth, logicalHeight, factor, this->filterPixels.data());
+    }
+
     SDL_UpdateTexture(this->filteredFrame, nullptr, this->filterPixels.data(), width * static_cast<int>(sizeof(u32)));
     this->filterSeen.assign(pixels, pixels + count);
     return this->filteredFrame;
 }
 
-SDL_Texture* Display::MakeFilteredBackdrop(const Surface& canvas)
+SDL_Texture* Display::MakeFilteredBackdrop(const Surface& canvas, int parts)
 {
     if (canvas.Width() <= 0 || canvas.Height() <= 0)
     {
         return nullptr;
     }
 
-    const int factor = this->FilterFactor(canvas.Width(), canvas.Height(), this->CurrentViewport());
-    const int width = canvas.Width() * factor;
-    const int height = canvas.Height() * factor;
+    const int woven = std::max(1, parts);
+    const int logicalWidth = canvas.Width() / woven;
+    const int logicalHeight = canvas.Height() / woven;
+    const int factor = this->FilterFactor(logicalWidth, logicalHeight, this->CurrentViewport());
+    const int width = logicalWidth * factor;
+    const int height = logicalHeight * factor;
 
     if (this->filteredBackdrop == nullptr || this->filteredBackdropWidth != width ||
         this->filteredBackdropHeight != height)
@@ -1480,10 +1494,25 @@ SDL_Texture* Display::MakeFilteredBackdrop(const Surface& canvas)
 
         SDL_SetTextureScaleMode(this->filteredBackdrop, SDL_SCALEMODE_LINEAR);
         this->filterBackdropPixels.assign(static_cast<std::size_t>(width) * height, 0);
-        LogInfo(u8"edge filter backdrop texture %dx%d (factor %d)", width, height, factor);
+        LogInfo(u8"filtered backdrop texture %dx%d (factor %d)", width, height, factor);
     }
 
-    EdgeScaler::Scale(canvas.Pixels(), canvas.Width(), canvas.Height(), factor, this->filterBackdropPixels.data());
+    if (woven > 1)
+    {
+        EdgeScaler::ScaleWoven(
+            canvas.Pixels(),
+            logicalWidth,
+            logicalHeight,
+            woven,
+            factor,
+            this->filterBackdropPixels.data()
+        );
+    }
+    else
+    {
+        EdgeScaler::Scale(canvas.Pixels(), logicalWidth, logicalHeight, factor, this->filterBackdropPixels.data());
+    }
+
     SDL_UpdateTexture(
         this->filteredBackdrop,
         nullptr,

@@ -326,7 +326,7 @@ height = 960
 maximized = false
 
 [display]
-<span class="c"># 以下五项也能在游戏里改：标题画面的「環境設定」，或游戏中按 Esc →「設定」→「顯示設定」。</span>
+<span class="c"># 以下七项也能在游戏里改：标题画面的「環境設定」，或游戏中按 Esc →「設定」→「顯示設定」。</span>
 
 <span class="c"># 平滑畫面。游戏逻辑仍和原版一样每 35 毫秒走一步，移动、淡入淡出等动态在两步之间</span>
 <span class="c"># 按显示器刷新率连续画出，高刷新率显示器更流畅。false 时和原版一样每 35 毫秒画一次。</span>
@@ -338,8 +338,12 @@ vsync = true
 frame_rate = 0
 <span class="c"># 平滑畫面按几倍精度绘制，可写 1～8。倍数越高，镜头和人物移动越细，也越耗 CPU</span>
 <span class="c"># （2 倍约为 1 倍的 3～4 倍）。&quot;auto&quot; 按窗口大小取能完整显示的最大倍数，最多 4 倍。</span>
-<span class="c"># 只在平滑畫面开启时有效。</span>
+<span class="c"># 只在平滑畫面开启、且畫面濾鏡为 nearest 时有效；edge 滤镜自行按窗口取整倍在内部交织绘制。</span>
 render_scale = &quot;auto&quot;
+<span class="c"># 畫面濾鏡：画面放大到窗口的取样方式。nearest 最近邻（原版的方块像素）；edge 边缘导向放大</span>
+<span class="c"># （把对角边缘重画放大，最细腻但最耗 CPU，开启时地图两帧之间改回 CPU 绘制，render_scale 设置页变暗、</span>
+<span class="c"># 由滤镜按窗口自理）。</span>
+scaler = &quot;nearest&quot;
 <span class="c"># 地图填满宽屏窗口，能看到更大范围，对话框仍在中间。</span>
 <span class="c"># 菜单、战斗、存档等画面仍是 640×480，两边留黑边。</span>
 wide_map = true

@@ -135,11 +135,13 @@ TEST_CASE("host settings: the render scale is a whole number or auto")
     CHECK(swd3e::SettingsText(written).find("render_scale = 3") != std::string::npos);
 }
 
-TEST_CASE("host settings: the scaler is nearest, linear or edge")
+TEST_CASE("host settings: the scaler is nearest or edge")
 {
     CHECK(swd3e::ParseHostSettings("", kBase).values.display.scaler == swd3e::DisplaySettings::DefaultFilter);
     CHECK(swd3e::ParseHostSettings("[display]\nscaler = \"edge\"\n", kBase).values.display.scaler == "edge");
-    CHECK(swd3e::ParseHostSettings("[display]\nscaler = \"linear\"\n", kBase).warnings.empty());
+    CHECK(swd3e::ParseHostSettings("[display]\nscaler = \"nearest\"\n", kBase).warnings.empty());
+    CHECK(!swd3e::ParseHostSettings("[display]\nscaler = \"pixel_art\"\n", kBase).warnings.empty());
+    CHECK(!swd3e::ParseHostSettings("[display]\nscaler = \"linear\"\n", kBase).warnings.empty());
 
     const swd3e::HostSettings loud = swd3e::ParseHostSettings("[display]\nscaler = \"smooth\"\n", kBase);
     CHECK_EQ(loud.warnings.size(), static_cast<std::size_t>(1));

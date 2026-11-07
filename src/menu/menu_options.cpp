@@ -485,9 +485,7 @@ std::vector<std::string> Menu::SetupChoices(Setup setup, i32 row, i32& chosen) c
                 choices.push_back(text(choice));
             }
 
-            chosen = owner.frameFilter == FrameFilter::Nearest  ? kNearestChoice
-                     : owner.frameFilter == FrameFilter::Linear ? kLinearChoice
-                                                                : kEdgeChoice;
+            chosen = owner.frameFilter == FrameFilter::Nearest ? kNearestChoice : kEdgeChoice;
             break;
 
         default:
@@ -543,9 +541,7 @@ void Menu::SetupChoose(Setup setup, i32 row, i32 choice)
             break;
 
         case kFilterRow:
-            owner.frameFilter = choice == kNearestChoice  ? FrameFilter::Nearest
-                                : choice == kLinearChoice ? FrameFilter::Linear
-                                                          : FrameFilter::Edge;
+            owner.frameFilter = choice == kNearestChoice ? FrameFilter::Nearest : FrameFilter::Edge;
             break;
 
         case kWideMapRow:

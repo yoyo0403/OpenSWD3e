@@ -12,7 +12,7 @@
 # 游戏数据也从这里读取。
 # 未配置 save_dir 时，编号存档 0.sav..98.sav 仍按原逻辑保存在 <data_dir>\save\ 中。
 
-# data_dir = './'
+data_dir = 'E:\Games\轩辕剑3外传天之痕'
 # save_dir = './save'
 
 [logging]
@@ -50,16 +50,21 @@
 # frame_rate：每秒最多画几帧，0 表示不限（开 vsync 时即跟随显示器刷新率）；其他取值 30..1000。
 # render_scale：平滑画面按几倍绘制。N 倍时镜头和人物可以停在 1/N 个像素上，移动更细；每个原版像素仍画成
 # N×N 的方块，画面与原版一致。"auto" 按窗口大小取能完整显示的最大整数倍（最多 4）；也可以写 1..8，
-# 倍数越大越耗 CPU（2 倍约为 1 倍的 3～4 倍）。只在 smooth_motion 开启时有效。
+# 倍数越大越耗 CPU（2 倍约为 1 倍的 3～4 倍）。只在 smooth_motion 开启、且 scaler 为 nearest 时有效；
+# edge 滤镜自行按窗口取 2..4 的整数倍在内部交织绘制（缩放按深度缩放的角色同样取子像素样本，设置页该项
+# 变暗）。
+# scaler：画面放大到窗口的取样方式。nearest 最近邻（原版的方块像素）；edge 边缘导向放大（CPU 上把对角
+# 边缘放大重画，最细腻，但最耗 CPU，且开启时地图两帧之间改回 CPU 绘制）。
 # wide_map：地图画面填满窗口，看到的地图范围随窗口变大；对话框等界面仍在中间。菜单、战斗、存档等画面仍是
 # 640×480，两边留黑边。
 # item_hints：地图上看不见、但调查后能拿到道具或银两的地方，以及还没打开的宝箱，头上显示一个跳动的箭头（能调查时才显示，拿走后消失）。
-# 这六项也可以在游戏中按 Esc →「設定」→「顯示設定」调整，调整后写入 swd3er.default.toml；这里写了的值启动时优先。
+# 这几项也可以在游戏中按 Esc →「設定」→「顯示設定」调整，调整后写入 swd3er.default.toml；这里写了的值启动时优先。
 
 # smooth_motion = true
 # vsync = true
 # frame_rate = 0
 # render_scale = "auto"
+# scaler = "nearest"
 # wide_map = true
 # item_hints = false
 

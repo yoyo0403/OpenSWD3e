@@ -362,7 +362,7 @@ void Validate(Settings& settings, std::vector<std::string>& warnings)
     if (!FrameFilterOf(display.scaler).has_value())
     {
         warnings.push_back(
-            "[display] scaler must be nearest, linear or edge: " + std::string(DisplaySettings::DefaultFilter) + " kept"
+            "[display] scaler must be nearest or edge: " + std::string(DisplaySettings::DefaultFilter) + " kept"
         );
         display.scaler = defaults.display.scaler;
     }

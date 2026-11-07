@@ -33,11 +33,11 @@
 
 第二遍汇编验证已全部完成（方法见 reverse/analysis/pass2-method.md，证据在 reverse/evidence/pass2/）。交付门槛：Linux 构建与单元测试通过、Windows 构建 0 警告（记录见 reverse/evidence/tests/build-results.md）；Windows 可正常游玩待用户试玩确认。
 
-其上按用户 2026-10-31 要求增加呈现层高清滤镜（[display] scaler：nearest／linear／自研 edge，自研算法不用第三方代码；设置页「畫面濾鏡」行，edge／linear 时繪製倍率强制 1），已实现并通过构建、0 警告与单元测试（见 deviations.md 对应行与 build-results.md 的原生 Windows 一节），观感待用户试玩。
+其上按用户 2026-10-31 要求增加呈现层高清滤镜（[display] scaler，设置页「畫面濾鏡」行，自研 edge 算法不用第三方代码），2026-11-07 按用户要求整定为两档：nearest／edge。edge 时地图两帧之间与菜单背后回 CPU 交织绘制（FilterFactor 2..4，ScaleWoven 保住深度缩放角色的细节，战斗仍按 1），修复合并 smooth-gpu 时的两处遗漏（Present 的 behind 分支整帧盖掉菜单背后窗口分辨率背景、EndLayers 未按滤镜取样），判角加两侧区域延伸与对角相触规则（1px 细节保持整像素）；其间一度加过 pixel_art／linear／grid 三档，按用户要求移除，谓词与渲染器侧取样一并整理（见 deviations.md hd-scaler 条与 build-results.md）。已通过原生 Windows 构建（0 警告），观感待用户试玩。
 
 其上按用户 2026-11-02 要求增加状态栏好感显示（小雪／玉儿角色页隐藏属性列下「好感」行，值为角色表 RoleVariables 低字节，与最終章分歧同源），已实现并通过原生 Windows 构建（0 警告、风格检查无差异，见 deviations.md 对应行与 build-results.md 原生 Windows 一节），显示效果待用户试玩。
 
-停点：无，等待 Windows 试玩结果（含滤镜观感与好感行显示）。
+停点：无，等待 Windows 试玩结果（含最近／邊緣两种滤镜观感与好感行显示）。
 
 ## 下一步
 

@@ -66,11 +66,12 @@ TEST_CASE("display: positions on the black bars clamp to the screen edge")
 TEST_CASE("display: the frame filters read back by their names")
 {
     CHECK(FrameFilterOf("nearest") == FrameFilter::Nearest);
-    CHECK(FrameFilterOf("linear") == FrameFilter::Linear);
     CHECK(FrameFilterOf("edge") == FrameFilter::Edge);
+    CHECK(!FrameFilterOf("pixel_art").has_value());
+    CHECK(!FrameFilterOf("linear").has_value());
+    CHECK(!FrameFilterOf("grid").has_value());
     CHECK(!FrameFilterOf("xbrz").has_value());
     CHECK(!FrameFilterOf("").has_value());
     CHECK(FrameFilterName(FrameFilter::Nearest) == "nearest");
-    CHECK(FrameFilterName(FrameFilter::Linear) == "linear");
     CHECK(FrameFilterName(FrameFilter::Edge) == "edge");
 }

@@ -1574,23 +1574,53 @@ void Game::ShowLayout(bool map)
     if (overMap != this->backdropTaken)
     {
         // The map around the menus and the shop is darkened and grey, as the shop's own background is.
+        int wovenParts = 1;
+
         if (overMap)
         {
-            this->CaptureMapBehind();
-            const std::span<Pixel> canvas(
-                this->mapCanvas->Pixels(),
-                static_cast<std::size_t>(this->mapCanvas->Width()) * static_cast<std::size_t>(this->mapCanvas->Height())
-            );
-            this->painter.TintPixels(canvas, kShopTintRed, kShopTintGreen, kShopTintBlue);
-            this->painter.GrayPixels(canvas);
+            // The edge filter shows the canvas through its own scaled copy (SetBackdrop); the GPU's picture behind
+            // the menus (SetMenuBehind, taken by CaptureMapBehind) would never be scaled by it, so it is not taken.
+            // Its copy is woven at the filter's factor, as the frames between paint the map: the scaler takes the
+            // sub-pixels from it, and the depth-scaled roles keep their detail behind the menus as they do between
+            // the frames (deviations.md).
+            if (this->frameFilter == FrameFilter::Edge)
+            {
+                wovenParts = this->display.FilterFactor(this->mapLayout.width, this->mapLayout.height);
+                this->wovenBackdrop =
+                    std::make_unique<Surface>(this->mapLayout.width * wovenParts, this->mapLayout.height * wovenParts);
+                this->fieldView.PaintBetween(*this->wovenBackdrop);
+                const std::span<Pixel> woven(
+                    this->wovenBackdrop->Pixels(),
+                    static_cast<std::size_t>(this->wovenBackdrop->Width()) *
+                        static_cast<std::size_t>(this->wovenBackdrop->Height())
+                );
+                this->painter.TintPixels(woven, kShopTintRed, kShopTintGreen, kShopTintBlue);
+                this->painter.GrayPixels(woven);
+            }
+            else
+            {
+                this->CaptureMapBehind();
+
+                const std::span<Pixel> canvas(
+                    this->mapCanvas->Pixels(),
+                    static_cast<std::size_t>(this->mapCanvas->Width()) *
+                        static_cast<std::size_t>(this->mapCanvas->Height())
+                );
+                this->painter.TintPixels(canvas, kShopTintRed, kShopTintGreen, kShopTintBlue);
+                this->painter.GrayPixels(canvas);
+            }
         }
 
-        this->display.SetBackdrop(overMap ? this->mapCanvas.get() : nullptr);
+        this->display.SetBackdrop(
+            overMap ? (wovenParts > 1 ? this->wovenBackdrop.get() : this->mapCanvas.get()) : nullptr,
+            wovenParts
+        );
         this->backdropTaken = overMap;
 
         if (!overMap)
         {
             this->display.ClearMenuBehind();
+            this->wovenBackdrop.reset();
         }
     }
 
@@ -1745,6 +1775,15 @@ bool Game::PresentBetween()
     // The edge filter takes the frame as drawn (its pixels stay whole), so the render scale goes with the nearest
     // filter only; a pixel drawn at a render scale would come out as a block again.
     int scale = this->frameFilter == FrameFilter::Nearest ? this->renderScaleSetting : 1;
+    // The rebuild: the edge filter weaves the map at its own whole-number factor instead — the scaler takes each
+    // block's sub-pixels from the woven canvas, so the depth-scaled roles keep the detail their woven painting
+    // samples (deviations.md). The battle stays at 1: its frames between replay the whole scene.
+    const bool woven = map && this->frameFilter == FrameFilter::Edge;
+
+    if (woven)
+    {
+        scale = this->display.FilterFactor(width, height);
+    }
 
     if (scale == Game::AutoRenderScale)
     {
@@ -1768,9 +1807,10 @@ bool Game::PresentBetween()
     else
     {
         // The rebuild: the map laid by the GPU (reverse/analysis/smooth-gpu.md), painted where its layers cannot show
-        // the frame.
+        // the frame. The edge filter scales the frame on the CPU, so with it the map is painted between the game
+        // frames instead (the composed canvas could not pass through it).
 
-        if (this->fieldView.LayBetween(scale))
+        if (this->frameFilter != FrameFilter::Edge && this->fieldView.LayBetween(scale))
         {
             const u64 laid = SDL_GetTicksNS() - paintStart;
             this->paintBetweenNs += laid;
@@ -1786,7 +1826,7 @@ bool Game::PresentBetween()
     const u64 painted = SDL_GetTicksNS() - paintStart;
     this->paintBetweenNs += painted;
     this->paintBetweenMostNs = std::max(this->paintBetweenMostNs, painted);
-    this->display.Present(*this->smoothScreen);
+    this->display.Present(*this->smoothScreen, woven ? scale : 1);
     ++this->framesBetween;
     return true;
 }

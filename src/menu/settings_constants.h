@@ -43,11 +43,10 @@ constexpr std::array<std::u8string_view, 8> kDisplayLabels = {
     u8"返回",
 };
 
-// The choices of the filter row: the original's square pixels, linear smoothing and the rebuild's edge scaler.
-constexpr std::array<std::u8string_view, 3> kFilterChoices = {u8"最近", u8"線性", u8"邊緣"};
+// The choices of the filter row: the original's square pixels and the rebuild's edge scaler.
+constexpr std::array<std::u8string_view, 2> kFilterChoices = {u8"最近", u8"邊緣"};
 constexpr i32 kNearestChoice = 0;
-constexpr i32 kLinearChoice = 1;
-constexpr i32 kEdgeChoice = 2;
+constexpr i32 kEdgeChoice = 1;
 
 // The rows of the battle setup, and their labels.
 constexpr i32 kAutoComboRow = 0;

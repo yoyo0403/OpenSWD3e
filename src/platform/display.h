@@ -1,12 +1,12 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <span>
 #include <string>
-#include <vector>
-#include <optional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "core/point.h"
 #include "core/types.h"
@@ -59,18 +59,16 @@ Viewport FitViewport(int outputWidth, int outputHeight, const ScreenLayout& layo
 LogicalPoint ToLogical(const Viewport& viewport, float outputX, float outputY, const ScreenLayout& layout = {});
 
 // How the logical frame is scaled to the window (the rebuild's [display] scaler, deviations.md): the original's
-// nearest pixels, linear filtering, or the rebuild's edge scaler (diagonals blended at the pixel corners).
+// nearest pixels, or the rebuild's edge scaler (diagonals blended at the pixel corners).
 enum class FrameFilter : u8
 {
     Nearest,
-    Linear,
     Edge,
 };
 
 // The names of the filters as [display] scaler takes them, in the order of the setting page's choices.
-constexpr std::array<std::pair<std::string_view, FrameFilter>, 3> kFrameFilters = {{
+constexpr std::array<std::pair<std::string_view, FrameFilter>, 2> kFrameFilters = {{
     {"nearest", FrameFilter::Nearest},
-    {"linear", FrameFilter::Linear},
     {"edge", FrameFilter::Edge},
 }};
 
@@ -112,19 +110,25 @@ public:
     }
 
     // The screen shown scaled to the window; a screen larger than the logical one (the map drawn at a render scale)
-    // goes through a texture of its own size.
-    void Present(const Surface& screen);
+    // goes through a texture of its own size. `parts` of more than one: the screen is a canvas woven at that many
+    // sub-pixels a pixel (the render scale's painting), whose sub-samples the edge filter scales from, their corners
+    // judged on each block's north-west one.
+    void Present(const Surface& screen, int parts = 1);
     // What the frames shown from now on are (the 640x480 screen alone by default).
     void SetLayout(const ScreenLayout& layout);
     // A picture of the whole canvas shown behind the 640x480 frames presented on a larger layout (nothing behind them
-    // without one: black); taken once here.
-    void SetBackdrop(const Surface* canvas);
+    // without one: black); taken once here. `parts` as Present takes (a woven canvas keeps its samples through the
+    // edge filter).
+    void SetBackdrop(const Surface* canvas, int parts = 1);
     const ScreenLayout& Layout() const;
     // The canvas the map would fill the window with: as high as the screen and as wide as the window's shape asks
     // (as wide and taller in a tall window), at least the 640x480 screen.
     ScreenLayout FillLayout() const;
     // The largest whole multiple of the canvas the window's output holds (at least 1).
     int FitScale() const;
+    // The whole-number factor the edge filter scales a canvas of `width` x `height` logical pixels by: enough for the
+    // window, at most its most. The map's woven painting between the frames and behind a menu uses it as its parts.
+    int FilterFactor(int width, int height) const;
     // Presenting waits for the display's refresh (`enabled`); false when the renderer cannot.
     bool SetVSync(bool enabled);
     // How the frames shown are scaled to the window ([display] scaler); the edge filter scales the frame on the CPU
@@ -315,10 +319,10 @@ private:
     void LogicalToWindow(int x, int y, float& windowX, float& windowY) const;
     // The frame of `screen` under the edge filter, as a texture of its own (the frame scaled by hand, the renderer
     // scaling it the rest of the way with linear sampling); nullptr when the texture cannot be made. A frame that did
-    // not change is not scaled again.
-    SDL_Texture* MakeFilteredFrame(const Surface& screen, const Viewport& viewport);
+    // not change is not scaled again. `parts` as Present takes: a woven canvas is scaled from its sub-samples.
+    SDL_Texture* MakeFilteredFrame(const Surface& screen, const Viewport& viewport, int parts);
     // The same for a backdrop canvas, scaled anew each call (backdrops are taken rarely).
-    SDL_Texture* MakeFilteredBackdrop(const Surface& canvas);
+    SDL_Texture* MakeFilteredBackdrop(const Surface& canvas, int parts);
     // The factor the edge filter scales `width` x `height` by: enough for the window, at most EdgeScaler::MostFactor.
     int FilterFactor(int width, int height, const Viewport& viewport) const;
 
@@ -361,6 +365,7 @@ private:
     SDL_Texture* filteredFrame = nullptr;
     int filteredWidth = 0;
     int filteredHeight = 0;
+    int filterParts = 1;  // the parts the seen frame was woven at
     std::vector<u16> filterSeen;
     std::vector<u32> filterPixels;
     SDL_Texture* filteredBackdrop = nullptr;

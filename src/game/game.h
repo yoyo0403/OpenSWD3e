@@ -752,13 +752,14 @@ private:
     u64 frameDueNs = 0;
     u64 frameRatePeriodNs = 0;
     u64 nextDrawNs = 0;
-    std::unique_ptr<Surface> smoothScreen;  // the frames between, at the render scale
-    std::unique_ptr<Surface> menuScreen;    // the menu frames between
-    std::unique_ptr<Surface> mapCanvas;     // the map filling the window (BeginMapCanvas)
-    ScreenLayout mapLayout;                 // its size and where the 640x480 screen lies on it
-    bool mapBehind = false;                 // the last map canvas lies behind the menus
-    bool backdropTaken = false;             // the display shows the last map canvas behind the frames (ShowLayout)
-    int drawWidth = Display::Width;         // SetDrawSize
+    std::unique_ptr<Surface> smoothScreen;   // the frames between, at the render scale
+    std::unique_ptr<Surface> wovenBackdrop;  // ShowLayout: the map woven for a menu's backdrop (the edge filter)
+    std::unique_ptr<Surface> menuScreen;     // the menu frames between
+    std::unique_ptr<Surface> mapCanvas;      // the map filling the window (BeginMapCanvas)
+    ScreenLayout mapLayout;                  // its size and where the 640x480 screen lies on it
+    bool mapBehind = false;                  // the last map canvas lies behind the menus
+    bool backdropTaken = false;              // the display shows the last map canvas behind the frames (ShowLayout)
+    int drawWidth = Display::Width;          // SetDrawSize
     int drawHeight = Display::Height;
     int renderScaleSetting = 0;                      // [display] render_scale (AutoRenderScale: by the window)
     FrameFilter frameFilter = FrameFilter::Nearest;  // [display] scaler (the render scale goes with nearest only)
